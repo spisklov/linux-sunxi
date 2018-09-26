@@ -225,3 +225,18 @@
 	usb0_vbus-supply = <&reg_usb0_vbus>;
 	status = "okay";
 };
+
+&i2c0 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&i2c0_pins>;
+
+        status = "okay";
+        clock-frequency = <400000>;
+
+        lcd_ssd1306: lcd_ssd1306@3c {
+                compatible = "bs,lcd_ssd1306";
+                reg = <0x3c>;
+                status = "okay";
+        };
+};
+
