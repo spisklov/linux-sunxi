@@ -92,7 +92,7 @@ void cm_add_client(const struct bs_client *client)
 	spin_lock(&cm.lock);
 
 	do {
-		c = (struct client *)kmalloc(sizeof(*c), GFP_KERNEL);
+		c = kmalloc(sizeof(*c), GFP_KERNEL);
 		if (!c)
 			break;
 
@@ -120,7 +120,7 @@ int cm_add_listener(const struct cm_listener *listener)
 	spin_lock(&cm.lock);
 
 	do {
-		l = (struct listener *)kmalloc(sizeof(*l), GFP_KERNEL);
+		l = kmalloc(sizeof(*l), GFP_KERNEL);
 		if (!l) {
 			res = -ENOMEM;
 			break;

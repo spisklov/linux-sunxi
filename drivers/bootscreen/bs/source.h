@@ -6,7 +6,7 @@
 #include "bs_types.h"
 #include "cmd.h"
 
-typedef void (*cmd_handler_t)(const cmd *cmd);
+typedef void (*cmd_handler_t)(const struct cmd *cmd);
 
 struct bs_source {
 	void (*start)(struct bs_source *src);

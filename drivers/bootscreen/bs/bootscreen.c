@@ -29,7 +29,7 @@ static void sysfs_callback(void)
 }
 
 
-static void __exit bootscreen_exit(void)
+static void bootscreen_exit(void)
 {
 	if (!bootscreen)
 		return;
@@ -48,10 +48,10 @@ static int __init bootscreen_init(void)
 {
 	int res = 0;
 
-	BUG_ON(bootscreen);
+	WARN_ON(bootscreen);
 
 	do {
-		bootscreen = kzalloc(sizeof(struct bootscreen), GFP_KERNEL);
+		bootscreen = kzalloc(sizeof(*bootscreen), GFP_KERNEL);
 		if (!bootscreen) {
 			LOG(KERN_ERR, "can't init bootscreen");
 			return -ENOMEM;
@@ -59,7 +59,8 @@ static int __init bootscreen_init(void)
 
 		res = cm_initialize();
 		if (res) {
-			LOG(KERN_ERR, "failed to init client manager (%d)", res);
+			LOG(KERN_ERR, "failed to init client manager (%d)"
+				, res);
 			break;
 		}
 
@@ -70,7 +71,8 @@ static int __init bootscreen_init(void)
 		}
 
 		destination_create();
-		bootscreen->src = create_animation_source(destination_handle_cmd);
+		bootscreen->src =
+			create_animation_source(destination_handle_cmd);
 		bootscreen->src->start(bootscreen->src);
 
 		return res;
@@ -93,7 +95,7 @@ int bs_register_client(const struct bs_client *client)
 
 int bs_unregister_client(const struct bs_client *client)
 {
-	LOG(KERN_ERR, "%s not implemented", __FUNCTION__);
+	LOG(KERN_ERR, "%s not implemented", __func__);
 	return -1;
 }
 

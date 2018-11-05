@@ -56,7 +56,7 @@ static inline void fill_data(const u8 *frame, size_t size, struct bs_data *logo)
 }
 
 
-struct anim_logo *create_animation_logo_64x128(const struct bs_client* client)
+struct anim_logo *create_animation_logo_64x128(const struct bs_client *client)
 {
 	struct al_64x128 *res;
 

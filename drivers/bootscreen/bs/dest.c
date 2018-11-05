@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include "client_manager.h"
 #include "bootscreen.h"
 #include "dest.h"
 #include "log.h"
@@ -27,10 +28,14 @@ struct dest_device {
 struct dest {
 	struct list_head devices_head;
 	spinlock_t device_lock;
+	int listener_id;
 };
 
+static struct dest dest;
 
-static struct cmd_node *create_cmd_node(const struct cmd *cmd, struct dest_device *device)
+
+static struct cmd_node *create_cmd_node(const struct cmd *cmd
+	, struct dest_device *device)
 {
 	struct cmd_node *cmd_node = kmalloc(sizeof(*cmd_node), GFP_KERNEL);
 
@@ -59,9 +64,9 @@ static int dest_device_worker(void *data)
 	struct cmd_node *cmd1 = NULL, *cmd2 = NULL;
 	struct list_head *pos, *n;
 
-	LOG(KERN_DEBUG, "dest device worker starts(%cx%c)..."
-		, device->client->supported_resolution.width
-		, device->client->supported_resolution.height);
+	LOG(KERN_DEBUG, "dest device worker starts(%dx%d)..."
+		, (int) device->client->resolution.width
+		, (int) device->client->resolution.height);
 
 	while (!kthread_should_stop()) {
 		wait_for_completion(&device->completion);
@@ -104,39 +109,57 @@ static int dest_device_worker(void *data)
 		}
 	}
 
-	LOG(KERN_DEBUG, "dest device worker finishes(%cx%c)..."
-		, device->client->supported_resolution.width
-		, device->client->supported_resolution.height);
+	LOG(KERN_DEBUG, "dest device worker finishes(%dx%d)..."
+		, (int)device->client->resolution.width
+		, (int)device->client->resolution.height);
 
 	return 0;
 }
 
 
-static struct dest_device *dest_create_device(const struct bs_client *client, struct dest *dest)
+static struct dest_device *dest_create_device(const struct bs_client *client)
 {
 	struct dest_device *device = kmalloc(sizeof(*device), GFP_KERNEL);
+
 	if (!device)
 		return NULL;
-
-	list_add_tail(&device->node, &dest->devices_head);
 
 	init_completion(&device->completion);
 	spin_lock_init(&device->cmd_lock);
 	INIT_LIST_HEAD(&device->cmd_head);
 	device->client = client;
-	device->worker = kthread_run(dest_device_worker, device, "device worker");
+	device->worker = kthread_run(dest_device_worker
+		, device, "device worker");
 
 	return device;
 }
 
 
-static struct dest dest;
+static void on_client_added(const struct bs_client *client, void *data)
+{
+	struct dest_device *device = dest_create_device(client);
+
+	if (!device) {
+		LOG(KERN_ERR, "failed to create dest device");
+		return;
+	}
+
+	list_add_tail(&device->node, &dest.devices_head);
+}
 
 
 int destination_create(void)
 {
+	struct cm_listener listener = {
+		.on_client_added = on_client_added,
+		.data = NULL,
+	};
+
 	INIT_LIST_HEAD(&dest.devices_head);
 	spin_lock_init(&dest.device_lock);
+	dest.listener_id = cm_add_listener(&listener);
+
+	return dest.listener_id >= 0 ? 0 : dest.listener_id;
 }
 
 

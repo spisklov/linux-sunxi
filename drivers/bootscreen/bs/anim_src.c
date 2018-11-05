@@ -50,7 +50,7 @@ static void unlock(spinlock_t *lock)
 
 static int read_data_worker(void *data)
 {
-	struct anim_source *thiz = (struct anim_source*)data;
+	struct anim_source *thiz = (struct anim_source *)data;
 	struct bs_data frame;
 	struct anim_item *item;
 	struct list_head *pos;
@@ -77,7 +77,7 @@ static int read_data_worker(void *data)
 
 static int fade_worker(void *data)
 {
-	struct anim_source *thiz = (struct anim_source*)data;
+	struct anim_source *thiz = (struct anim_source *)data;
 	u8 contrast = 100;
 	struct anim_item *item;
 	struct list_head *pos;
@@ -88,7 +88,8 @@ static int fade_worker(void *data)
 		lock(&thiz->data_lock);
 		list_for_each(pos, &thiz->anim_src_list) {
 			item = list_entry(pos, struct anim_item, node);
-			cmd = cmd_create_set_contrast(item->logo->client, contrast);
+			cmd = cmd_create_set_contrast(item->logo->client
+				, contrast);
 			thiz->handler(cmd);
 		}
 		unlock(&thiz->data_lock);
@@ -104,7 +105,7 @@ static int fade_worker(void *data)
 
 static struct anim_logo *create_anim_logo(const struct bs_client *client)
 {
-	if (64 == client->supported_resolution.width && 128 == client->supported_resolution.height)
+	if (128 == client->resolution.width && 64 == client->resolution.height)
 		return create_animation_logo_64x128(client);
 
 	return NULL;
@@ -127,12 +128,12 @@ static void on_client_added(const struct bs_client *client, void *data)
 		logo = create_anim_logo(client);
 		if (!logo) {
 			LOG(KERN_WARNING, "unsupported client (res: %ux%u)"
-			, client->supported_resolution.width
-			, client->supported_resolution.height);
+			, client->resolution.width
+			, client->resolution.height);
 			break;
 		}
 
-		item = (struct anim_item *)kmalloc(sizeof(*item), GFP_KERNEL);
+		item = kmalloc(sizeof(*item), GFP_KERNEL);
 		if (!item) {
 			LOG(KERN_ERR, "can't allocate memory got anim item");
 			break;
@@ -153,7 +154,8 @@ static void start(struct bs_source *src)
 
 	lock(&thiz->api_lock);
 	if (!thiz->worker)
-		thiz->worker = kthread_run(read_data_worker, thiz, "animation thread");
+		thiz->worker = kthread_run(read_data_worker
+			, thiz, "animation thread");
 	unlock(&thiz->api_lock);
 }
 
@@ -206,7 +208,7 @@ struct bs_source *create_animation_source(cmd_handler_t handler)
 	if (!handler)
 		return NULL;
 
-	source = (struct anim_source *)kmalloc(sizeof(*source), GFP_KERNEL);
+	source = kmalloc(sizeof(*source), GFP_KERNEL);
 	if (!source)
 		return NULL;
 

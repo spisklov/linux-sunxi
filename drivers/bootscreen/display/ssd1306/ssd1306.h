@@ -26,6 +26,7 @@
 #define SET_COM_PINS          0xDA
 #define SET_VCOM_DETECT       0xDB
 
-#define MEM_MODE_VERTICAL     0x01;
+#define MEM_MODE_HORIZONTAL   0x00
+#define MEM_MODE_VERTICAL     0x01
 
 #endif // __SSD1306_H__

@@ -21,15 +21,18 @@ struct sysfs_data {
 	bs_callback_t callback;
 };
 
-typedef ssize_t (*show_callback_t)(struct class *class, struct class_attribute *attr, char *buf);
+typedef ssize_t (*show_callback_t)(struct class *class
+	, struct class_attribute *attr, char *buf);
 
 
 static struct sysfs_data *fs_data;
 
 
-static ssize_t show_bs(struct class *class, struct class_attribute *attr, char *buf)
+static ssize_t show_bs(struct class *class
+	, struct class_attribute *attr, char *buf)
 {
 	fs_data->callback();
+	return 0;
 }
 
 
@@ -38,7 +41,7 @@ int bs_create_sysfs_entry(bs_callback_t callback)
 	int res = 0;
 
 	do {
-		BUG_ON(fs_data);
+		WARN_ON(fs_data);
 
 		if (!callback)
 			return -EINVAL;
@@ -49,18 +52,21 @@ int bs_create_sysfs_entry(bs_callback_t callback)
 			break;
 		}
 
-		fs_data->fs_nodes.fs_class = class_create(THIS_MODULE, KBUILD_MODNAME);
+		fs_data->fs_nodes.fs_class = class_create(THIS_MODULE
+			, KBUILD_MODNAME);
 		if (IS_ERR(fs_data->fs_nodes.fs_class)) {
 			LOG(KERN_ERR, "bad sysfs class");
 			break;
 		}
 
-		memset(&fs_data->fs_nodes.sw2fb_attr, 0, sizeof(struct class_attribute));
-		fs_data->fs_nodes.sw2fb_attr.attr.mode = S_IRUGO;
+		memset(&fs_data->fs_nodes.sw2fb_attr, 0
+			, sizeof(struct class_attribute));
+		fs_data->fs_nodes.sw2fb_attr.attr.mode = 0444;
 		fs_data->fs_nodes.sw2fb_attr.attr.name = "sw2fb";
 		fs_data->fs_nodes.sw2fb_attr.show = show_bs;
 
-		res = class_create_file(fs_data->fs_nodes.fs_class, &fs_data->fs_nodes.sw2fb_attr);
+		res = class_create_file(fs_data->fs_nodes.fs_class
+			, &fs_data->fs_nodes.sw2fb_attr);
 		if (res) {
 			LOG(KERN_ERR, "failed to create sysfs attribute entry");
 			break;
@@ -80,7 +86,8 @@ void bs_remove_sysfs_entry(void)
 	if (!fs_data)
 		return;
 
-	class_remove_file(fs_data->fs_nodes.fs_class, &fs_data->fs_nodes.sw2fb_attr);
+	class_remove_file(fs_data->fs_nodes.fs_class
+		, &fs_data->fs_nodes.sw2fb_attr);
 	class_destroy(fs_data->fs_nodes.fs_class);
 	kfree(fs_data);
 	fs_data = NULL;
