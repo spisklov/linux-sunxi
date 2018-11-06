@@ -93,12 +93,31 @@ static void init_lcd(struct i2c_client *drv_client)
 }
 
 
+static void lcd_flush_data(void)
+{
+	int ret;
+
+	lcd_data.type = 0x40;
+	ret = i2c_master_send(lcd.i2c, (u8 *) &lcd_data, sizeof(lcd_data));
+	if (unlikely(ret < 0))
+		dev_warn(lcd.dev, "i2c_master_send() failed with error (%d)\n"
+			, ret);
+}
+
+
+static void lcd_clear(void)
+{
+	memset(lcd_data.data, 0x00, ARRAY_SIZE(lcd_data.data));
+	lcd_flush_data();
+}
+
+
 static void lcd_display(const void *data, size_t size)
 {
-	int i, j, k, ret;
+	int i, j, k;
 
 	if (!data) {
-		dev_warn(lcd.dev, "not a data\n");
+		dev_warn(lcd.dev, "no data\n");
 		return;
 	}
 
@@ -125,16 +144,13 @@ static void lcd_display(const void *data, size_t size)
 		}
 	}
 
-	lcd_data.type = 0x40;
-	ret = i2c_master_send(lcd.i2c, (u8 *) &lcd_data, sizeof(lcd_data));
-	if (unlikely(ret < 0))
-		dev_warn(lcd.dev, "i2c_master_send() failed with error (%d)\n"
-			, ret);
+	lcd_flush_data();
 }
 
 
 static void lcd_set_contrast(u8 contrast)
 {
+	dev_warn(lcd.dev, "setting contrast (%u)\n", contrast);
 	SSD1306_SEND_COMMAND(lcd.i2c, SET_CONTRAST);
 	SSD1306_SEND_COMMAND(lcd.i2c, contrast);
 }
@@ -154,6 +170,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 		.set_contrast = lcd_set_contrast,
 	};
 
+	dev_info(lcd.dev, "ssd1306 initialazing...\n");
 	lcd.dev = &drv_client->dev;
 	lcd.i2c = drv_client;
 
@@ -178,6 +195,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 	i2c_set_clientdata(drv_client, &lcd);
 
 	init_lcd(drv_client);
+	lcd_clear();
 
 	bs_register_client(&client);
 

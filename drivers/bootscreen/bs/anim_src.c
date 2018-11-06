@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include "anim_src.h"
-#include "anim_logo_64x128.h"
+#include "anim_logo_128x64.h"
 #include "client_manager.h"
 #include "cmd.h"
 #include "log.h"
@@ -25,6 +25,7 @@ struct anim_source {
 	cmd_handler_t handler;
 	int listener_id;
 	spinlock_t data_lock;
+	//TODO: chage to mutex
 	spinlock_t api_lock;
 };
 
@@ -57,7 +58,10 @@ static int read_data_worker(void *data)
 	const struct cmd *cmd;
 
 	LOG(KERN_DEBUG, "animation thread started...");
+
 	while (!kthread_should_stop()) {
+		set_current_state(TASK_INTERRUPTIBLE);
+
 		lock(&thiz->data_lock);
 		list_for_each(pos, &thiz->anim_src_list) {
 			item = list_entry(pos, struct anim_item, node);
@@ -71,34 +75,6 @@ static int read_data_worker(void *data)
 	}
 
 	LOG(KERN_DEBUG, "animation thread stopped...");
-	return 0;
-}
-
-
-static int fade_worker(void *data)
-{
-	struct anim_source *thiz = (struct anim_source *)data;
-	u8 contrast = 100;
-	struct anim_item *item;
-	struct list_head *pos;
-	const struct cmd *cmd;
-
-	LOG(KERN_DEBUG, "fade thread started...");
-	while (contrast) {
-		lock(&thiz->data_lock);
-		list_for_each(pos, &thiz->anim_src_list) {
-			item = list_entry(pos, struct anim_item, node);
-			cmd = cmd_create_set_contrast(item->logo->client
-				, contrast);
-			thiz->handler(cmd);
-		}
-		unlock(&thiz->data_lock);
-
-		schedule_timeout(msecs_to_jiffies(100));
-		contrast -= 10;
-	}
-
-	LOG(KERN_DEBUG, "fade thread stopped...");
 	return 0;
 }
 
@@ -163,14 +139,35 @@ static void start(struct bs_source *src)
 static void finalize(struct bs_source *src)
 {
 	struct anim_source *thiz = (struct anim_source *)src;
+	struct list_head *pos;
+
+	u8 contrast = 255;
 
 	lock(&thiz->api_lock);
 	if (thiz->worker) {
 		kthread_stop(thiz->worker);
 		free_kthread_struct(thiz->worker);
+		thiz->worker = NULL;
 	}
 
-	thiz->worker = kthread_run(fade_worker, thiz, "fade thread");
+	while (contrast > 10) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		lock(&thiz->data_lock);
+		list_for_each(pos, &thiz->anim_src_list) {
+			struct anim_item *item = list_entry(pos
+				, struct anim_item, node);
+			const struct cmd *cmd =
+				cmd_create_set_contrast(item->logo->client
+					, contrast);
+
+			thiz->handler(cmd);
+		}
+		unlock(&thiz->data_lock);
+
+		schedule_timeout(msecs_to_jiffies(100));
+		contrast -= 25;
+	}
+
 	unlock(&thiz->api_lock);
 }
 

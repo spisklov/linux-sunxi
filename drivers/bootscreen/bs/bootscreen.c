@@ -6,6 +6,7 @@
 #include "dest.h"
 #include "log.h"
 #include "sysfs.h"
+#include "fb_src.h"
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -22,10 +23,16 @@ static struct bootscreen *bootscreen;
 
 static void sysfs_callback(void)
 {
-	bs_remove_sysfs_entry();
-	bootscreen->src->finalize(bootscreen->src);
-	bootscreen->src->destroy(bootscreen->src);
-	bootscreen->src = NULL;
+//	bs_remove_sysfs_entry();
+	if (bootscreen->src) {
+		LOG(KERN_INFO, "before src finalize");
+		bootscreen->src->finalize(bootscreen->src);
+		LOG(KERN_INFO, "before src destroy");
+		bootscreen->src->destroy(bootscreen->src);
+		LOG(KERN_INFO, "src destroyed");
+		bootscreen->src = create_fb_source();
+//		destination_destroy();
+	}
 }
 
 
@@ -37,6 +44,7 @@ static void bootscreen_exit(void)
 	if (bootscreen->src)
 		bootscreen->src->destroy(bootscreen->src);
 
+	destination_destroy();
 	bs_remove_sysfs_entry();
 	cm_destroy();
 	kfree(bootscreen);
@@ -49,6 +57,7 @@ static int __init bootscreen_init(void)
 	int res = 0;
 
 	WARN_ON(bootscreen);
+	LOG(KERN_INFO, "initializing...");
 
 	do {
 		bootscreen = kzalloc(sizeof(*bootscreen), GFP_KERNEL);
@@ -75,6 +84,7 @@ static int __init bootscreen_init(void)
 			create_animation_source(destination_handle_cmd);
 		bootscreen->src->start(bootscreen->src);
 
+		LOG(KERN_INFO, "initalized");
 		return res;
 	} while (0);
 
@@ -88,6 +98,8 @@ int bs_register_client(const struct bs_client *client)
 	if (!client)
 		return -EINVAL;
 
+	LOG(KERN_INFO, "client came (%ux%u)", client->resolution.width
+		, client->resolution.height);
 	cm_add_client(client);
 	return 0;
 }

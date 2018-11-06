@@ -7,7 +7,7 @@ if [ -z $1 ]; then
 fi
 
 #Constants
-LINES_PER_SCREEN_WIDTH=8
+LINES_PER_SCREEN_WIDTH=16
 MAX_NUM=8
 
 #Variables

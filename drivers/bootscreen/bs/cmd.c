@@ -38,7 +38,7 @@ static void destroy_display_cmd(const struct cmd *cmd)
 	struct display_cmd *thiz = (struct display_cmd *)cmd;
 
 	thiz->data.free_data(&thiz->data);
-	kfree(cmd);
+	kfree(thiz);
 }
 
 
@@ -51,8 +51,7 @@ static void destroy_contrast_cmd(const struct cmd *cmd)
 const struct cmd *cmd_create_display(const struct bs_client *client
 	, struct bs_data *data)
 {
-	struct display_cmd *cmd = (struct display_cmd *)
-		kmalloc(sizeof(*cmd), GFP_KERNEL);
+	struct display_cmd *cmd = kmalloc(sizeof(*cmd), GFP_KERNEL);
 
 	if (cmd) {
 		cmd->cmd.id = 1;
@@ -72,8 +71,7 @@ const struct cmd *cmd_create_display(const struct bs_client *client
 const struct cmd *cmd_create_set_contrast(const struct bs_client *client
 	, u8 contrast)
 {
-	struct contrast_cmd *cmd = (struct contrast_cmd *)
-		kmalloc(sizeof(*cmd), GFP_KERNEL);
+	struct contrast_cmd *cmd = kmalloc(sizeof(*cmd), GFP_KERNEL);
 
 	if (cmd) {
 		cmd->cmd.id = 2;

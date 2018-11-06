@@ -10,7 +10,7 @@
 
 
 struct client {
-	const struct bs_client *client;
+	const struct bs_client client;
 	struct list_head node;
 };
 
@@ -96,14 +96,16 @@ void cm_add_client(const struct bs_client *client)
 		if (!c)
 			break;
 
-		c->client = client;
+		memcpy((void *)&c->client, client, sizeof(*client));
 		list_add_tail(&c->node, &cm.clients);
 
 		//Deadlock may happen here
 		list_for_each(pos, &cm.listeners) {
 			l = list_entry(pos, struct listener, node);
-			l->listener.on_client_added(client, l->listener.data);
+			l->listener.on_client_added(&c->client
+				, l->listener.data);
 		}
+
 	} while (0);
 	spin_unlock(&cm.lock);
 }
@@ -113,6 +115,8 @@ int cm_add_listener(const struct cm_listener *listener)
 {
 	int res = 0;
 	struct listener *l;
+	struct list_head *pos;
+	struct client *client;
 
 	if (!listener)
 		return -EINVAL;
@@ -130,6 +134,12 @@ int cm_add_listener(const struct cm_listener *listener)
 		memcpy(&l->listener, listener, sizeof(*listener));
 		l->id = res;
 		list_add_tail(&l->node, &cm.listeners);
+
+		list_for_each(pos, &cm.clients) {
+			client = list_entry(pos, struct client, node);
+			listener->on_client_added(&client->client
+				, listener->data);
+		}
 	} while (0);
 
 	spin_unlock(&cm.lock);

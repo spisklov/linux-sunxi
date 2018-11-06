@@ -10,9 +10,9 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 
-struct cmd_node {
-	struct list_head node;
-	const struct cmd *cmd;
+
+struct commands {
+	const struct cmd *cmds[2];
 };
 
 struct dest_device {
@@ -20,9 +20,9 @@ struct dest_device {
 	struct completion completion;
 	struct list_head node;
 	struct task_struct *worker;
+	struct commands commands;
 
 	spinlock_t cmd_lock;
-	struct list_head cmd_head;
 };
 
 struct dest {
@@ -31,87 +31,79 @@ struct dest {
 	int listener_id;
 };
 
+
 static struct dest dest;
 
 
-static struct cmd_node *create_cmd_node(const struct cmd *cmd
-	, struct dest_device *device)
+static void on_cmd(const struct cmd *cmd, struct dest_device *device)
 {
-	struct cmd_node *cmd_node = kmalloc(sizeof(*cmd_node), GFP_KERNEL);
+	int i = 0;
+	u8 found = 0;
+	struct commands *commands = &device->commands;
 
-	if (!cmd_node)
-		return NULL;
+	if (!cmd) {
+		LOG(KERN_WARNING, "command is null");
+		return;
+	}
 
-	cmd_node->cmd = cmd;
-	list_add(&cmd_node->node, &device->cmd_head);
-	complete(&device->completion);
+	for (; i < ARRAY_SIZE(commands->cmds); ++i) {
+		if (commands->cmds[i] == NULL) {
+			found = 1;
+			commands->cmds[i] = cmd;
+			complete(&device->completion);
+			break;
+		} else if (commands->cmds[i]->id == cmd->id) {
+			found = 1;
+			commands->cmds[i]->destroy(commands->cmds[i]);
+			commands->cmds[i] = cmd;
+			complete(&device->completion);
+			break;
+		}
+	}
 
-	return cmd_node;
-}
-
-
-static void destroy_cmd_node(const struct cmd_node *cmd_node)
-{
-	cmd_node->cmd->destroy(cmd_node->cmd);
-	kfree(cmd_node);
+	if (!found) {
+		LOG(KERN_WARNING, "unknown cmd (%d)", cmd->id);
+		cmd->destroy(cmd);
+	}
 }
 
 
 static int dest_device_worker(void *data)
 {
 	struct dest_device *device = (struct dest_device *)data;
-	struct cmd_node *cmd_node;
-	struct cmd_node *cmd1 = NULL, *cmd2 = NULL;
-	struct list_head *pos, *n;
+	int i;
+	struct commands commands;
+	const int arr_size = ARRAY_SIZE(commands.cmds);
 
-	LOG(KERN_DEBUG, "dest device worker starts(%dx%d)..."
-		, (int) device->client->resolution.width
-		, (int) device->client->resolution.height);
+	LOG(KERN_DEBUG, "dest device worker starts(%ux%u)..."
+		, device->client->resolution.width
+		, device->client->resolution.height);
 
 	while (!kthread_should_stop()) {
-		wait_for_completion(&device->completion);
+		set_current_state(TASK_INTERRUPTIBLE);
+		wait_for_completion_interruptible(&device->completion);
+
+		if (kthread_should_stop())
+			break;
 
 		spin_lock(&device->cmd_lock);
-		list_for_each_safe(pos, n, &device->cmd_head) {
-			cmd_node = list_entry(pos, struct cmd_node, node);
-			if (cmd1) {
-				if (cmd1->cmd->id == cmd_node->cmd->id) {
-					list_del(pos);
-					destroy_cmd_node(cmd_node);
-					continue;
-				}
-			} else {
-				list_del(pos);
-				cmd1 = cmd_node;
-				continue;
-			}
-
-			if (cmd2) {
-				if (cmd2->cmd->id == cmd_node->cmd->id) {
-					list_del(pos);
-					destroy_cmd_node(cmd_node);
-				}
-			} else {
-				list_del(pos);
-				cmd2 = cmd_node;
-			}
+		for (i = 0; i < arr_size; ++i) {
+			commands.cmds[i] = device->commands.cmds[i];
+			device->commands.cmds[i] = NULL;
 		}
 		spin_unlock(&device->cmd_lock);
 
-		if (cmd1) {
-			cmd1->cmd->execute(cmd1->cmd);
-			cmd1->cmd->destroy(cmd1->cmd);
-		}
-
-		if (cmd2) {
-			cmd2->cmd->execute(cmd2->cmd);
-			cmd2->cmd->destroy(cmd2->cmd);
+		for (i = 0; i < arr_size; ++i) {
+			if (commands.cmds[i]) {
+				commands.cmds[i]->execute(commands.cmds[i]);
+				commands.cmds[i]->destroy(commands.cmds[i]);
+			}
 		}
 	}
 
-	LOG(KERN_DEBUG, "dest device worker finishes(%dx%d)..."
-		, (int)device->client->resolution.width
-		, (int)device->client->resolution.height);
+	LOG(KERN_DEBUG, "dest device worker finishes(%ux%u)..."
+		, device->client->resolution.width
+		, device->client->resolution.height);
 
 	return 0;
 }
@@ -126,12 +118,33 @@ static struct dest_device *dest_create_device(const struct bs_client *client)
 
 	init_completion(&device->completion);
 	spin_lock_init(&device->cmd_lock);
-	INIT_LIST_HEAD(&device->cmd_head);
 	device->client = client;
+	memset(device->commands.cmds, 0, sizeof(device->commands.cmds));
 	device->worker = kthread_run(dest_device_worker
 		, device, "device worker");
 
 	return device;
+}
+
+
+static void dest_destroy_device(struct dest_device *device)
+{
+	int i;
+
+	spin_lock(&device->cmd_lock);
+	for (i = 0; i < ARRAY_SIZE(device->commands.cmds); ++i) {
+		if (device->commands.cmds[i]) {
+			device->commands.cmds[i]
+				->destroy(device->commands.cmds[i]);
+			device->commands.cmds[i] = NULL;
+		}
+	}
+	spin_unlock(&device->cmd_lock);
+	complete(&device->completion);
+	kthread_stop(device->worker);
+	free_kthread_struct(device->worker);
+
+	kfree(device);
 }
 
 
@@ -144,7 +157,9 @@ static void on_client_added(const struct bs_client *client, void *data)
 		return;
 	}
 
+	spin_lock(&dest.device_lock);
 	list_add_tail(&device->node, &dest.devices_head);
+	spin_unlock(&dest.device_lock);
 }
 
 
@@ -167,15 +182,46 @@ void destination_handle_cmd(const struct cmd *cmd)
 {
 	struct list_head *pos;
 	struct dest_device *device;
+	u8 found = 0;
 
 	list_for_each(pos, &dest.devices_head) {
 		device = list_entry(pos, struct dest_device, node);
 
 		if (device->client == cmd->client) {
 			spin_lock(&device->cmd_lock);
-			create_cmd_node(cmd, device);
+			on_cmd(cmd, device);
+			found = 1;
 			spin_unlock(&device->cmd_lock);
 			break;
 		}
 	}
+
+	if (!found) {
+		LOG(KERN_WARNING, "cmd is not handled");
+		cmd->destroy(cmd);
+	}
+}
+
+
+void destination_destroy(void)
+{
+	struct list_head *pos, *n;
+
+	if (-1 == dest.listener_id)
+		return;
+
+	cm_remove_listener(dest.listener_id);
+	dest.listener_id = -1;
+
+	spin_lock(&dest.device_lock);
+
+	list_for_each_safe(pos, n, &dest.devices_head) {
+		struct dest_device *device = list_entry(pos
+			, struct dest_device, node);
+
+		list_del(pos);
+		dest_destroy_device(device);
+	}
+
+	spin_unlock(&dest.device_lock);
 }
